@@ -9,7 +9,7 @@ public class CorridorEnemyAI : MonoBehaviour
     public EnemyState state = EnemyState.Drift;
 
     public Transform      player;
-    public SpriteRenderer spriteRenderer;   // assign in Inspector or auto-found in Start
+    public SpriteRenderer spriteRenderer;
 
     private Rigidbody2D rb;
 
@@ -20,8 +20,14 @@ public class CorridorEnemyAI : MonoBehaviour
     [Header("Toy Aggro")]
     public float toyAggroRange = 2.5f;
 
-    private int   driftDir     = 1;
+    [Header("SootSprite Bob")]
+    public bool  verticalBob   = true;    
+    public float bobAmplitude  = 0.08f;
+    public float bobFrequency  = 1.2f;
+
+    private int   driftDir = 1;
     private float startX;
+    private float bobTime  = 0f;
     public  float driftDistance = 2f;
 
     private void Start()
@@ -29,7 +35,6 @@ public class CorridorEnemyAI : MonoBehaviour
         rb = GetComponent<Rigidbody2D>();
         startX = transform.position.x;
 
-        // Auto-find SpriteRenderer if not assigned
         if (spriteRenderer == null)
             spriteRenderer = GetComponentInChildren<SpriteRenderer>();
     }
@@ -58,7 +63,14 @@ public class CorridorEnemyAI : MonoBehaviour
         if (transform.position.x > startX + driftDistance) driftDir = -1;
         if (transform.position.x < startX - driftDistance) driftDir =  1;
 
-        rb.velocity = new Vector2(driftDir * driftSpeed, 0f);
+        float vy = 0f;
+        if (enemyType == EnemyType.SootSprite && verticalBob)
+        {
+            bobTime += Time.fixedDeltaTime;
+            vy = Mathf.Sin(bobTime * bobFrequency * Mathf.PI * 2f) * bobAmplitude;
+        }
+
+        rb.velocity = new Vector2(driftDir * driftSpeed, vy);
         FlipSprite(driftDir);
     }
 
@@ -71,12 +83,9 @@ public class CorridorEnemyAI : MonoBehaviour
         FlipSprite((int)dir);
     }
 
-    // Flips the sprite so the enemy always faces its movement direction.
-    // Assumes the sprite's default face direction is right (positive X).
     private void FlipSprite(int direction)
     {
-        if (spriteRenderer == null) return;
-        if (direction == 0) return;
+        if (spriteRenderer == null || direction == 0) return;
         spriteRenderer.flipX = direction < 0;
     }
 }
