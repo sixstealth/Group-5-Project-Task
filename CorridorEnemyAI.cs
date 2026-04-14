@@ -21,9 +21,14 @@ public class CorridorEnemyAI : MonoBehaviour
     public float toyAggroRange = 2.5f;
 
     [Header("SootSprite Bob")]
-    public bool  verticalBob   = true;    
-    public float bobAmplitude  = 0.08f;
-    public float bobFrequency  = 1.2f;
+    public bool  verticalBob  = true;
+    public float bobAmplitude = 0.08f;
+    public float bobFrequency = 1.2f;
+
+    [Header("Attack")]
+    public float attackRange   = 0.9f;
+    public float attackCooldown = 0.85f;
+    private float attackTimer   = 0f;
 
     private int   driftDir = 1;
     private float startX;
@@ -41,6 +46,8 @@ public class CorridorEnemyAI : MonoBehaviour
 
     private void Update()
     {
+        if (attackTimer > 0f) attackTimer -= Time.deltaTime;
+
         if (enemyType == EnemyType.AngryToy && player != null)
         {
             float dist = Vector2.Distance(transform.position, player.position);
@@ -78,9 +85,33 @@ public class CorridorEnemyAI : MonoBehaviour
     {
         if (player == null) return;
 
-        float dir = Mathf.Sign(player.position.x - transform.position.x);
-        rb.velocity = new Vector2(dir * chaseSpeed, 0f);
+        float dx    = player.position.x - transform.position.x;
+        float distX = Mathf.Abs(dx);
+        float dir   = Mathf.Sign(dx);
+
+        if (distX > attackRange)
+        {
+            // Still too far — keep chasing
+            rb.velocity = new Vector2(dir * chaseSpeed, 0f);
+        }
+        else
+        {
+            // In range — stop and attack
+            rb.velocity = new Vector2(0f, 0f);
+
+            if (attackTimer <= 0f)
+            {
+                attackTimer = attackCooldown;
+                DoAttack();
+            }
+        }
+
         FlipSprite((int)dir);
+    }
+
+    private void DoAttack()
+    {
+        Debug.Log($"{name} attacks the player!");
     }
 
     private void FlipSprite(int direction)
