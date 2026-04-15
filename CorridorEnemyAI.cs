@@ -3,7 +3,7 @@ using UnityEngine;
 public class CorridorEnemyAI : MonoBehaviour
 {
     public enum EnemyType  { SootSprite, AngryToy }
-    public enum EnemyState { Drift, Chase }
+    public enum EnemyState { Drift, InvestigateFlashlight, Chase }
 
     public EnemyType  enemyType;
     public EnemyState state = EnemyState.Drift;
@@ -26,6 +26,10 @@ public class CorridorEnemyAI : MonoBehaviour
     public float bobAmplitude = 0.08f;
     public float bobFrequency = 1.2f;
 
+    [Header("Flashlight Investigation — SootSprite only")]
+    public float investigateSpeed          = 2.8f;
+    public float investigateArriveDistance = 0.6f;
+
     [Header("Attack")]
     public float attackRange     = 0.9f;
     public float attackCooldown  = 0.85f;
@@ -34,13 +38,16 @@ public class CorridorEnemyAI : MonoBehaviour
     private float attackTimer    = 0f;
 
     [Header("Hit Stun")]
-    public float hitStunTime = 0.35f;
+    public float hitStunTime   = 0.35f;
     private float hitStunTimer = 0f;
 
     private int   driftDir = 1;
     private float startX;
     private float bobTime  = 0f;
     public  float driftDistance = 2f;
+
+    private bool    hasAlert   = false;
+    private Vector2 alertPoint;          // world position where the flashlight hit the player
 
     private void Start()
     {
@@ -51,11 +58,22 @@ public class CorridorEnemyAI : MonoBehaviour
             spriteRenderer = GetComponentInChildren<SpriteRenderer>();
     }
 
-    // Call this from whatever script handles the enemy taking damage
-    public void OnHit()
+    // ── Public API ────────────────────────────────────────────────────────────
+
+    public void OnHit() => hitStunTimer = hitStunTime;
+
+    public void OnFlashlightDetected(Transform detectedPlayer)
     {
-        hitStunTimer = hitStunTime;
+        if (enemyType == EnemyType.AngryToy) return;
+
+        player     = detectedPlayer;
+        alertPoint = detectedPlayer.position;
+        hasAlert   = true;
+
+        state = EnemyState.InvestigateFlashlight;
     }
+
+    // ── Update / FixedUpdate ──────────────────────────────────────────────────
 
     private void Update()
     {
@@ -71,20 +89,22 @@ public class CorridorEnemyAI : MonoBehaviour
 
     private void FixedUpdate()
     {
-        // During hit stun the enemy freezes in place and ignores all state logic
         if (hitStunTimer > 0f)
         {
-            hitStunTimer  -= Time.fixedDeltaTime;
-            rb.velocity    = Vector2.zero;
+            hitStunTimer -= Time.fixedDeltaTime;
+            rb.velocity   = Vector2.zero;
             return;
         }
 
         switch (state)
         {
-            case EnemyState.Drift: DoDrift(); break;
-            case EnemyState.Chase: DoChase(); break;
+            case EnemyState.Drift:                DoDrift();                break;
+            case EnemyState.InvestigateFlashlight: DoInvestigateFlashlight(); break;
+            case EnemyState.Chase:                DoChase();                break;
         }
     }
+
+    // ── States ────────────────────────────────────────────────────────────────
 
     private void DoDrift()
     {
@@ -102,6 +122,29 @@ public class CorridorEnemyAI : MonoBehaviour
         FlipSprite(driftDir);
     }
 
+    private void DoInvestigateFlashlight()
+    {
+        if (!hasAlert)
+        {
+            state = EnemyState.Drift;
+            return;
+        }
+
+        float dx    = alertPoint.x - transform.position.x;
+        float distX = Mathf.Abs(dx);
+
+        if (distX > investigateArriveDistance)
+        {
+            // Still en route to the lit point
+            rb.velocity = new Vector2(Mathf.Sign(dx) * investigateSpeed, rb.velocity.y);
+            FlipSprite((int)Mathf.Sign(dx));
+            return;
+        }
+
+        rb.velocity = Vector2.zero;
+        state       = EnemyState.Chase;
+    }
+
     private void DoChase()
     {
         if (player == null) return;
@@ -111,18 +154,11 @@ public class CorridorEnemyAI : MonoBehaviour
         float dir   = Mathf.Sign(dx);
 
         if (distX > attackRange)
-        {
             rb.velocity = new Vector2(dir * chaseSpeed, 0f);
-        }
         else
         {
             rb.velocity = Vector2.zero;
-
-            if (attackTimer <= 0f)
-            {
-                attackTimer = attackCooldown;
-                DoAttack();
-            }
+            if (attackTimer <= 0f) { attackTimer = attackCooldown; DoAttack(); }
         }
 
         FlipSprite((int)dir);
