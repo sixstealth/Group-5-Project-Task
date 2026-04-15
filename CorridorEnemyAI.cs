@@ -11,7 +11,8 @@ public class CorridorEnemyAI : MonoBehaviour
     public Transform      player;
     public SpriteRenderer spriteRenderer;
 
-    private Rigidbody2D rb;
+    private Rigidbody2D  rb;
+    private PlayerHealth playerHP;   // cached on first use
 
     [Header("Movement")]
     public float driftSpeed    = 1f;
@@ -26,8 +27,10 @@ public class CorridorEnemyAI : MonoBehaviour
     public float bobFrequency = 1.2f;
 
     [Header("Attack")]
-    public float attackRange   = 0.9f;
+    public float attackRange    = 0.9f;
     public float attackCooldown = 0.85f;
+    public int   attackDamage   = 1;
+    public float attackKnockback = 4.5f;
     private float attackTimer   = 0f;
 
     private int   driftDir = 1;
@@ -91,13 +94,11 @@ public class CorridorEnemyAI : MonoBehaviour
 
         if (distX > attackRange)
         {
-            // Still too far — keep chasing
             rb.velocity = new Vector2(dir * chaseSpeed, 0f);
         }
         else
         {
-            // In range — stop and attack
-            rb.velocity = new Vector2(0f, 0f);
+            rb.velocity = Vector2.zero;
 
             if (attackTimer <= 0f)
             {
@@ -111,7 +112,12 @@ public class CorridorEnemyAI : MonoBehaviour
 
     private void DoAttack()
     {
-        Debug.Log($"{name} attacks the player!");
+        // Lazy-cache PlayerHealth so we don't call GetComponent every frame
+        if (playerHP == null && player != null)
+            playerHP = player.GetComponent<PlayerHealth>();
+
+        if (playerHP != null)
+            playerHP.TakeDamage(attackDamage, (Vector2)transform.position, attackKnockback);
     }
 
     private void FlipSprite(int direction)
