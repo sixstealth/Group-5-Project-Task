@@ -9,8 +9,8 @@ public class FlashlightCone : MonoBehaviour
 
     [Header("Light Feedback (optional)")]
     public Light spotLight;
-    public float baseIntensity     = 1.0f;
-    public float detectedIntensity = 2.2f;
+    public float baseIntensity     = 500.0f;
+    public float detectedIntensity = 1000.2f;
     public float flashFadeSpeed    = 4f;
 
     private Transform _detectedPlayer  = null;
