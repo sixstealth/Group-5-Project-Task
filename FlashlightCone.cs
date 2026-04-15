@@ -9,13 +9,15 @@ public class FlashlightCone : MonoBehaviour
 
     [Header("Light Feedback (optional)")]
     public Light spotLight;
-    public float baseIntensity     = 500.0f;
-    public float detectedIntensity = 1000.2f;
+    public float baseIntensity     = 1000f; 
+    public float detectedIntensity = 5000f; 
     public float flashFadeSpeed    = 4f;
 
     private Transform _detectedPlayer  = null;
     private float     _continuousTimer = 0f;
     private float     _currentIntensity;
+
+    private PlayerVisibility _playerVisibility;
 
     private void Start()
     {
@@ -52,12 +54,25 @@ public class FlashlightCone : MonoBehaviour
         _currentIntensity = detectedIntensity;
         if (spotLight != null) spotLight.intensity = detectedIntensity;
 
+        _playerVisibility = other.GetComponent<PlayerVisibility>();
+        if (_playerVisibility != null)
+        {
+            _playerVisibility.SetVisible(true);
+        }
+
         BroadcastAlert(_detectedPlayer);
     }
 
     private void OnTriggerExit(Collider other)
     {
         if (!other.CompareTag(playerTag)) return;
+        
+        if (_playerVisibility != null)
+        {
+            _playerVisibility.SetVisible(false);
+            _playerVisibility = null;
+        }
+
         _detectedPlayer = null;
     }
 

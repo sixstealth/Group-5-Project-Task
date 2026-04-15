@@ -212,6 +212,17 @@ public class CorridorEnemyAI : MonoBehaviour
     {
         if (player == null) { state = EnemyState.ReturnToShadow; return; }
 
+        if (playerVis != null && playerVis.IsHidden)
+        {
+            Debug.Log("Враг потерял игрока в темноте!");
+            combatLocked = false;
+            alertPoint = player.position; 
+            alertWaitTimer = searchTimeIfHidden; 
+            state = EnemyState.InvestigateFlashlight;
+            return;
+        }
+
+
         float distance = Vector3.Distance(transform.position, player.position);
 
         if (distance > attackRange)
@@ -234,7 +245,6 @@ public class CorridorEnemyAI : MonoBehaviour
         direction.Normalize();
 
         float vy = rb.velocity.y; 
-
 
         if (enemyType == EnemyType.SootSprite && verticalBob)
         {

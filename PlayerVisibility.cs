@@ -2,33 +2,27 @@ using UnityEngine;
 
 public class PlayerVisibility : MonoBehaviour
 {
-    public bool IsHidden = false;
-    
+    public bool IsHidden = true; 
 
     private Renderer _renderer;
-    private Color _originalColor;
 
     private void Start()
     {
         _renderer = GetComponent<Renderer>();
-        if (_renderer != null)
-        {
-            _originalColor = _renderer.material.color;
-        }
+        UpdateVisuals(); 
     }
 
-    private void Update()
+    public void SetVisible(bool isVisible)
     {
-        if (Input.GetKeyDown(KeyCode.LeftControl))
+        IsHidden = !isVisible; 
+        UpdateVisuals();
+    }
+
+    private void UpdateVisuals()
+    {
+        if (_renderer != null)
         {
-            IsHidden = true;
-            if (_renderer != null) _renderer.material.color = Color.gray; 
-        }
-        
-        if (Input.GetKeyUp(KeyCode.LeftControl))
-        {
-            IsHidden = false;
-            if (_renderer != null) _renderer.material.color = _originalColor; 
+            _renderer.material.color = IsHidden ? Color.gray : Color.green;
         }
     }
 }
