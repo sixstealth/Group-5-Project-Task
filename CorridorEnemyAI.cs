@@ -1,6 +1,6 @@
 using UnityEngine;
 
-[RequireComponent(typeof(Rigidbody2D))]
+[RequireComponent(typeof(Rigidbody))]
 public class CorridorEnemyAI : MonoBehaviour
 {
     public enum EnemyType  { SootSprite, AngryToy }
@@ -9,44 +9,33 @@ public class CorridorEnemyAI : MonoBehaviour
     public EnemyType  enemyType;
     public EnemyState state = EnemyState.Drift;
 
-    public Transform      player;
-    public SpriteRenderer spriteRenderer;
+    public Transform player;
 
-    private Rigidbody2D      rb;
+    private Rigidbody        rb;
     private PlayerHealth     playerHP;
     private PlayerVisibility playerVis;
 
-    [Header("Physics Layers (must match Project Settings)")]
-    public string enemyBackgroundPhysicsLayer = "EnemyBackground";
-    public string enemyForegroundPhysicsLayer = "Enemy";
-    private int   _layerBg = -1;
-    private int   _layerFg = -1;
-
-    [Header("Sorting Layers")]
-    public string backgroundSortingLayer = "Midground";
-    public int    backgroundSortingOrder = 0;
-    public string foregroundSortingLayer = "Foreground";
-    public int    foregroundSortingOrder = 5;
-
     [Header("Movement")]
-    public float driftSpeed    = 1f;
-    public float chaseSpeed    = 3f;
+    public float driftSpeed  = 1.5f;
+    public float chaseSpeed  = 3.5f;
+    public float driftRadius = 3f; 
+    public float rotationSpeed = 5f; 
 
     [Header("Toy Aggro")]
-    public float toyAggroRange = 2.5f;
+    public float toyAggroRange = 3f;
 
     [Header("SootSprite Bob")]
     public bool  verticalBob  = true;
     public float bobAmplitude = 0.08f;
     public float bobFrequency = 1.2f;
 
-    [Header("Flashlight Investigation — SootSprite only")]
+    [Header("Flashlight Investigation")]
     public float investigateSpeed          = 2.8f;
-    public float investigateArriveDistance = 0.6f;
+    public float investigateArriveDistance = 1.0f;
     public float searchTimeIfHidden        = 3.5f;
 
     [Header("Attack")]
-    public float attackRange     = 0.9f;
+    public float attackRange     = 1.2f;
     public float attackCooldown  = 0.85f;
     public int   attackDamage    = 1;
     public float attackKnockback = 4.5f;
@@ -56,77 +45,49 @@ public class CorridorEnemyAI : MonoBehaviour
     public float hitStunTime   = 0.35f;
     private float hitStunTimer = 0f;
 
-    [Header("2.5D Fake Depth")]
-    public bool    useFakeDepth         = true;
-    public float   backgroundY          = -3.2f;
-    public float   depthMoveSpeed       = 2.5f;
-    public Vector3 farScale             = new Vector3(0.7f,  0.7f,  1f);
-    public Vector3 nearScale            = new Vector3(1.05f, 1.05f, 1f);
-    public float   farDistance          = 8f;
-    public float   foregroundYThreshold = 0.15f;
-
-    [Header("Swarm Call — SootSprite only")]
+    [Header("Swarm Call (SootSprite)")]
     public bool  enableSwarmCall   = true;
     public float swarmCallRadius   = 7f;
     public bool  swarmCallOnlyOnce = true;
     private bool _didSwarmCall     = false;
 
-    private int   driftDir     = 1;
-    private float startX;
-    private float bobTime      = 0f;    // randomised in Awake so sprites don't pulse in sync
-    public  float driftDistance = 2f;
+    private Vector3 startPos;
+    private Vector3 wanderTarget;
+    private float bobTime = 0f;
 
     private bool    hasAlert       = false;
-    private Vector2 alertPoint;
+    private Vector3 alertPoint;
     private float   alertWaitTimer = 0f;
 
-    // Prevents re-alerting a sprite that is already confirmed in chase
     private bool combatLocked = false;
 
     private void Awake()
     {
-        _layerBg = LayerMask.NameToLayer(enemyBackgroundPhysicsLayer);
-        _layerFg = LayerMask.NameToLayer(enemyForegroundPhysicsLayer);
-
-        // Random phase means a corridor full of sprites won't all bob in unison
         bobTime = Random.Range(0f, 10f);
     }
 
     private void Start()
     {
-        rb = GetComponent<Rigidbody2D>();
-        startX = transform.position.x;
+        rb = GetComponent<Rigidbody>();
+        
+        rb.useGravity = (enemyType == EnemyType.AngryToy); 
+        rb.freezeRotation = true;
 
-        if (spriteRenderer == null)
-            spriteRenderer = GetComponentInChildren<SpriteRenderer>();
-
-        if (useFakeDepth)
-        {
-            transform.position   = new Vector3(transform.position.x, backgroundY, transform.position.z);
-            startX               = transform.position.x;
-            transform.localScale = farScale;
-            SetBackgroundSorting();
-            SetBackgroundPhysicsLayer();
-        }
-        else
-        {
-            SetForegroundPhysicsLayer();
-        }
+        startPos = transform.position;
+        GetNewWanderTarget();
     }
-
 
     public void OnHit() => hitStunTimer = hitStunTime;
 
     public void OnFlashlightDetected(Transform detectedPlayer)
     {
         if (enemyType == EnemyType.AngryToy) return;
-        // Don't interrupt an already-confirmed chase
         if (combatLocked && state == EnemyState.Chase) return;
 
         player     = detectedPlayer;
         alertPoint = detectedPlayer.position;
         hasAlert   = true;
-        combatLocked   = false;
+        combatLocked = false;
 
         if (playerVis == null) playerVis = detectedPlayer.GetComponent<PlayerVisibility>();
         if (playerHP  == null) playerHP  = detectedPlayer.GetComponent<PlayerHealth>();
@@ -151,15 +112,13 @@ public class CorridorEnemyAI : MonoBehaviour
         attackTimer    = 0f;
     }
 
-
     private void Update()
     {
         if (attackTimer > 0f) attackTimer -= Time.deltaTime;
 
         if (enemyType == EnemyType.AngryToy && player != null)
         {
-            float dist = Vector2.Distance(transform.position, player.position);
-            if (dist < toyAggroRange)
+            if (Vector3.Distance(transform.position, player.position) < toyAggroRange)
                 state = EnemyState.Chase;
         }
     }
@@ -169,8 +128,7 @@ public class CorridorEnemyAI : MonoBehaviour
         if (hitStunTimer > 0f)
         {
             hitStunTimer -= Time.fixedDeltaTime;
-            rb.velocity   = Vector2.zero;
-            if (useFakeDepth) DoFakeDepth();
+            rb.velocity = new Vector3(0, rb.velocity.y, 0); 
             return;
         }
 
@@ -181,42 +139,38 @@ public class CorridorEnemyAI : MonoBehaviour
             case EnemyState.ReturnToShadow:        DoReturnToShadow();        break;
             case EnemyState.Chase:                 DoChase();                 break;
         }
-
-        if (useFakeDepth) DoFakeDepth();
     }
-
 
     private void DoDrift()
     {
-        if (transform.position.x > startX + driftDistance) driftDir = -1;
-        if (transform.position.x < startX - driftDistance) driftDir =  1;
-
-        float vy = 0f;
-        if (enemyType == EnemyType.SootSprite && verticalBob)
+        if (Vector3.Distance(transform.position, wanderTarget) < 0.5f)
         {
-            bobTime += Time.fixedDeltaTime;
-            vy = Mathf.Sin(bobTime * bobFrequency * Mathf.PI * 2f) * bobAmplitude;
+            GetNewWanderTarget();
         }
 
-        rb.velocity = new Vector2(driftDir * driftSpeed, vy);
-        FlipSprite(driftDir);
+        MoveTowardsTarget(wanderTarget, driftSpeed);
+    }
+
+    private void GetNewWanderTarget()
+    {
+        Vector2 randomPoint = Random.insideUnitCircle * driftRadius;
+        wanderTarget = startPos + new Vector3(randomPoint.x, 0f, randomPoint.y);
     }
 
     private void DoInvestigateFlashlight()
     {
         if (!hasAlert) { state = EnemyState.Drift; return; }
 
-        float dx    = alertPoint.x - transform.position.x;
-        float distX = Mathf.Abs(dx);
+        float distanceToAlert = Vector3.Distance(new Vector3(transform.position.x, 0, transform.position.z), 
+                                                 new Vector3(alertPoint.x, 0, alertPoint.z));
 
-        if (distX > investigateArriveDistance)
+        if (distanceToAlert > investigateArriveDistance)
         {
-            rb.velocity = new Vector2(Mathf.Sign(dx) * investigateSpeed, rb.velocity.y);
-            FlipSprite((int)Mathf.Sign(dx));
+            MoveTowardsTarget(alertPoint, investigateSpeed);
             return;
         }
 
-        rb.velocity = new Vector2(0f, rb.velocity.y);
+        rb.velocity = new Vector3(0f, rb.velocity.y, 0f);
 
         bool playerHid = (playerVis != null) && playerVis.IsHidden;
         if (!playerHid)
@@ -236,21 +190,21 @@ public class CorridorEnemyAI : MonoBehaviour
 
     private void DoReturnToShadow()
     {
-        float dx    = startX - transform.position.x;
-        float distX = Mathf.Abs(dx);
+        float distanceToStart = Vector3.Distance(new Vector3(transform.position.x, 0, transform.position.z), 
+                                                 new Vector3(startPos.x, 0, startPos.z));
 
-        if (distX > 0.15f)
+        if (distanceToStart > 0.5f)
         {
-            rb.velocity = new Vector2(Mathf.Sign(dx) * driftSpeed, 0f);
-            FlipSprite((int)Mathf.Sign(dx));
+            MoveTowardsTarget(startPos, driftSpeed);
             return;
         }
 
-        rb.velocity    = Vector2.zero;
+        rb.velocity    = new Vector3(0f, rb.velocity.y, 0f);
         hasAlert       = false;
         alertWaitTimer = 0f;
         combatLocked   = false;
         _didSwarmCall  = false;
+        GetNewWanderTarget();
         state          = EnemyState.Drift;
     }
 
@@ -258,44 +212,48 @@ public class CorridorEnemyAI : MonoBehaviour
     {
         if (player == null) { state = EnemyState.ReturnToShadow; return; }
 
-        float dx      = player.position.x - transform.position.x;
-        float distX   = Mathf.Abs(dx);
-        float dir     = Mathf.Sign(dx);
-        float yDiff   = Mathf.Abs(transform.position.y - player.position.y);
-        bool  sameLane = !useFakeDepth || yDiff < foregroundYThreshold * 2f;
+        float distance = Vector3.Distance(transform.position, player.position);
 
-        if (distX > attackRange)
-            rb.velocity = new Vector2(dir * chaseSpeed, 0f);
+        if (distance > attackRange)
+        {
+            MoveTowardsTarget(player.position, chaseSpeed);
+        }
         else
         {
-            rb.velocity = Vector2.zero;
-            if (sameLane && attackTimer <= 0f) { attackTimer = attackCooldown; DoAttack(); }
+            rb.velocity = new Vector3(0, rb.velocity.y, 0);
+            FaceDirection((player.position - transform.position).normalized);
+            
+            if (attackTimer <= 0f) { attackTimer = attackCooldown; DoAttack(); }
         }
-
-        FlipSprite((int)dir);
     }
 
-
-    private void DoFakeDepth()
+    private void MoveTowardsTarget(Vector3 targetPos, float speed)
     {
-        bool  wantsFg = state == EnemyState.InvestigateFlashlight || state == EnemyState.Chase;
-        float targetY = (wantsFg && player != null) ? player.position.y : backgroundY;
+        Vector3 direction = (targetPos - transform.position);
+        direction.y = 0f; 
+        direction.Normalize();
 
-        float newY = Mathf.MoveTowards(transform.position.y, targetY, depthMoveSpeed * Time.fixedDeltaTime);
-        transform.position = new Vector3(transform.position.x, newY, transform.position.z);
+        float vy = rb.velocity.y; 
 
-        if (player != null)
+
+        if (enemyType == EnemyType.SootSprite && verticalBob)
         {
-            float dist = Vector2.Distance(transform.position, player.position);
-            float t    = Mathf.InverseLerp(farDistance, 0f, dist);
-            transform.localScale = Vector3.Lerp(farScale, nearScale, t);
+            bobTime += Time.fixedDeltaTime;
+            vy = Mathf.Sin(bobTime * bobFrequency * Mathf.PI * 2f) * bobAmplitude * 10f; 
         }
 
-        bool inFg = wantsFg && player != null
-                    && Mathf.Abs(transform.position.y - player.position.y) < foregroundYThreshold;
+        rb.velocity = new Vector3(direction.x * speed, vy, direction.z * speed);
+        FaceDirection(direction);
+    }
 
-        if (inFg) { SetForegroundSorting(); SetForegroundPhysicsLayer(); }
-        else      { SetBackgroundSorting(); SetBackgroundPhysicsLayer();  }
+    private void FaceDirection(Vector3 direction)
+    {
+        direction.y = 0f; 
+        if (direction != Vector3.zero)
+        {
+            Quaternion targetRotation = Quaternion.LookRotation(direction);
+            transform.rotation = Quaternion.Slerp(transform.rotation, targetRotation, rotationSpeed * Time.fixedDeltaTime);
+        }
     }
 
     private void TriggerSwarmCall()
@@ -309,7 +267,7 @@ public class CorridorEnemyAI : MonoBehaviour
             if (other == null || other == this) continue;
             if (other.enemyType == EnemyType.AngryToy) continue;
             if (other.state == EnemyState.Chase) continue;
-            if (Vector2.Distance(transform.position, other.transform.position) > swarmCallRadius) continue;
+            if (Vector3.Distance(transform.position, other.transform.position) > swarmCallRadius) continue;
 
             other.JoinSwarm(player);
         }
@@ -320,66 +278,28 @@ public class CorridorEnemyAI : MonoBehaviour
         if (playerHP == null && player != null)
             playerHP = player.GetComponent<PlayerHealth>();
 
-        playerHP?.TakeDamage(attackDamage, (Vector2)transform.position, attackKnockback);
-    }
-
-    private void FlipSprite(int direction)
-    {
-        if (spriteRenderer == null || direction == 0) return;
-        spriteRenderer.flipX = direction < 0;
-    }
-
-    private void SetBackgroundSorting()
-    {
-        if (spriteRenderer == null) return;
-        spriteRenderer.sortingLayerName = backgroundSortingLayer;
-        spriteRenderer.sortingOrder     = backgroundSortingOrder;
-    }
-
-    private void SetForegroundSorting()
-    {
-        if (spriteRenderer == null) return;
-        spriteRenderer.sortingLayerName = foregroundSortingLayer;
-        spriteRenderer.sortingOrder     = foregroundSortingOrder;
-    }
-
-    private void SetBackgroundPhysicsLayer()
-    {
-        if (_layerBg != -1) SetLayerRecursively(gameObject, _layerBg);
-    }
-
-    private void SetForegroundPhysicsLayer()
-    {
-        if (_layerFg != -1) SetLayerRecursively(gameObject, _layerFg);
-    }
-
-    private void SetLayerRecursively(GameObject obj, int layer)
-    {
-        obj.layer = layer;
-        foreach (Transform child in obj.transform)
-            SetLayerRecursively(child.gameObject, layer);
+        playerHP?.TakeDamage(attackDamage, transform.position, attackKnockback);
     }
 
     private void OnDrawGizmosSelected()
     {
-        // Red: melee attack range
         Gizmos.color = Color.red;
         Gizmos.DrawWireSphere(transform.position, attackRange);
 
-        // Yellow: last flashlight alert point
+        Gizmos.color = Color.green;
+        Gizmos.DrawWireSphere(Application.isPlaying ? startPos : transform.position, driftRadius);
+
         Gizmos.color = Color.yellow;
         Gizmos.DrawWireSphere(alertPoint, 0.25f);
 
         if (enemyType == EnemyType.SootSprite)
         {
-            // Purple: swarm broadcast radius
             Gizmos.color = new Color(0.6f, 0f, 1f, 1f);
             Gizmos.DrawWireSphere(transform.position, swarmCallRadius);
         }
 
         if (enemyType == EnemyType.AngryToy)
         {
-            // Orange: proximity aggro range
             Gizmos.color = new Color(1f, 0.4f, 0f, 1f);
             Gizmos.DrawWireSphere(transform.position, toyAggroRange);
         }

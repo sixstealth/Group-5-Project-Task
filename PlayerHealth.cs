@@ -2,18 +2,21 @@ using UnityEngine;
 
 public class PlayerHealth : MonoBehaviour
 {
+    [Header("Health Settings")]
     public int health = 5;
 
-    public void TakeDamage(int damage, Vector2 sourcePosition, float knockback)
+    public void TakeDamage(int damage, Vector3 sourcePosition, float knockback)
     {
         health -= damage;
-        Debug.Log("Player was hit! HP left:" + health);
+        Debug.Log("Player was hit! HP left: " + health);
 
-        Rigidbody2D rb = GetComponent<Rigidbody2D>();
+        Rigidbody rb = GetComponent<Rigidbody>();
         if (rb != null)
         {
-            Vector2 pushDir = ((Vector2)transform.position - sourcePosition).normalized;
-            rb.AddForce(pushDir * knockback, ForceMode2D.Impulse);
+            Vector3 pushDir = (transform.position - sourcePosition).normalized;
+            pushDir.y = 0.5f;
+            pushDir.Normalize();
+            rb.AddForce(pushDir * knockback, ForceMode.Impulse);
         }
     }
 }
