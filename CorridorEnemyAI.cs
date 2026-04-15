@@ -12,7 +12,7 @@ public class CorridorEnemyAI : MonoBehaviour
     public SpriteRenderer spriteRenderer;
 
     private Rigidbody2D  rb;
-    private PlayerHealth playerHP;   // cached on first use
+    private PlayerHealth playerHP;
 
     [Header("Movement")]
     public float driftSpeed    = 1f;
@@ -27,11 +27,15 @@ public class CorridorEnemyAI : MonoBehaviour
     public float bobFrequency = 1.2f;
 
     [Header("Attack")]
-    public float attackRange    = 0.9f;
-    public float attackCooldown = 0.85f;
-    public int   attackDamage   = 1;
+    public float attackRange     = 0.9f;
+    public float attackCooldown  = 0.85f;
+    public int   attackDamage    = 1;
     public float attackKnockback = 4.5f;
-    private float attackTimer   = 0f;
+    private float attackTimer    = 0f;
+
+    [Header("Hit Stun")]
+    public float hitStunTime = 0.35f;
+    private float hitStunTimer = 0f;
 
     private int   driftDir = 1;
     private float startX;
@@ -45,6 +49,12 @@ public class CorridorEnemyAI : MonoBehaviour
 
         if (spriteRenderer == null)
             spriteRenderer = GetComponentInChildren<SpriteRenderer>();
+    }
+
+    // Call this from whatever script handles the enemy taking damage
+    public void OnHit()
+    {
+        hitStunTimer = hitStunTime;
     }
 
     private void Update()
@@ -61,6 +71,14 @@ public class CorridorEnemyAI : MonoBehaviour
 
     private void FixedUpdate()
     {
+        // During hit stun the enemy freezes in place and ignores all state logic
+        if (hitStunTimer > 0f)
+        {
+            hitStunTimer  -= Time.fixedDeltaTime;
+            rb.velocity    = Vector2.zero;
+            return;
+        }
+
         switch (state)
         {
             case EnemyState.Drift: DoDrift(); break;
@@ -112,12 +130,10 @@ public class CorridorEnemyAI : MonoBehaviour
 
     private void DoAttack()
     {
-        // Lazy-cache PlayerHealth so we don't call GetComponent every frame
         if (playerHP == null && player != null)
             playerHP = player.GetComponent<PlayerHealth>();
 
-        if (playerHP != null)
-            playerHP.TakeDamage(attackDamage, (Vector2)transform.position, attackKnockback);
+        playerHP?.TakeDamage(attackDamage, (Vector2)transform.position, attackKnockback);
     }
 
     private void FlipSprite(int direction)
