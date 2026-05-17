@@ -7,10 +7,12 @@ public class BossHealth : MonoBehaviour
 
     [Header("Death")]
     [SerializeField] private Level3Manager level3Manager;
-    [SerializeField] private bool disableOnDeath = true;
+    [SerializeField] private bool disableOnDeath;
+    [SerializeField] private float deathAnimationDelay = 4.5f;
 
     private float currentHealth;
     private bool isDead;
+    private BossController bossController;
 
     public bool IsDead => isDead;
     public float CurrentHealth => currentHealth;
@@ -18,6 +20,7 @@ public class BossHealth : MonoBehaviour
 
     private void Awake()
     {
+        bossController = GetComponent<BossController>();
         currentHealth = maxHealth;
 
         if (GetComponentInChildren<WorldHealthDisplay>() == null)
@@ -48,6 +51,11 @@ public class BossHealth : MonoBehaviour
             level3Manager = FindObjectOfType<Level3Manager>();
         }
 
+        if (bossController != null)
+        {
+            bossController.PlayDeathAnimation();
+        }
+
         if (level3Manager != null)
         {
             level3Manager.OnBossDefeated();
@@ -55,7 +63,12 @@ public class BossHealth : MonoBehaviour
 
         if (disableOnDeath)
         {
-            gameObject.SetActive(false);
+            Invoke(nameof(DisableBoss), Mathf.Max(0f, deathAnimationDelay));
         }
+    }
+
+    private void DisableBoss()
+    {
+        gameObject.SetActive(false);
     }
 }

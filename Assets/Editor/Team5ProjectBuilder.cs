@@ -50,6 +50,23 @@ public static class Team5ProjectBuilder
         Debug.Log("Team 5 starter Unity project setup complete.");
     }
 
+    [MenuItem("Team5/Rebuild Levels 1 and 2")]
+    public static void BuildLevel1And2Only()
+    {
+        EnsureFolders();
+        EnsureTags();
+        CreateMaterials();
+
+        BuildLevel1();
+        BuildLevel2();
+        SetBuildSettings();
+
+        AssetDatabase.SaveAssets();
+        AssetDatabase.Refresh();
+
+        Debug.Log("Team 5 levels 1 and 2 rebuilt.");
+    }
+
     private static void EnsureFolders()
     {
         CreateFolder("Assets", "Scenes");
@@ -209,6 +226,8 @@ public static class Team5ProjectBuilder
 
         CreateRoom("Basement Room", 18f, 18f);
         CreateCube("Platform Jump Block", new Vector3(-5f, 0.75f, 2f), new Vector3(2.5f, 1.5f, 2.5f), wallMaterial, true);
+        CreateHidingSpot(new Vector3(-7.2f, 1f, -2f), new Vector3(1.3f, 2f, 2.2f));
+        CreateHidingSpot(new Vector3(7.2f, 1f, 3f), new Vector3(1.3f, 2f, 2.2f));
 
         GameObject managerObject = new GameObject("Level1Manager");
         Level1Manager manager = managerObject.AddComponent<Level1Manager>();
@@ -232,6 +251,14 @@ public static class Team5ProjectBuilder
         SetSerialized(doorUnlock, "nextSceneName", "Level2");
         SetSerialized(doorUnlock, "lockedMessageText", lockedText);
 
+        GameObject enemyOne = CreateEnemy("Soot Sprite Enemy", new Vector3(-1.5f, 1f, -1.5f));
+        CreateLightCone(enemyOne, 6.5f, 40f);
+
+        GameObject enemyTwo = CreateEnemy("Second Soot Sprite Enemy", new Vector3(3f, 1f, 4f));
+        CreateLightCone(enemyTwo, 6f, 40f);
+
+        SaveScene("Level1");
+        TryBakeNavMesh();
         SaveScene("Level1");
     }
 
@@ -243,6 +270,7 @@ public static class Team5ProjectBuilder
         GameObject player = CreatePlayer(new Vector3(0f, 1f, -12f));
         CreateGameplayCamera(player.transform);
         Canvas canvas = CreateGameplayCanvas(out Slider healthSlider, out Text healthText);
+        Text starText = CreateText(canvas.transform, "Stars: 0 / 4", 24, TextAnchor.UpperLeft, new Vector2(-420f, -70f), new Vector2(260f, 40f));
         SetSerialized(player.GetComponent<PlayerHealth>(), "healthSlider", healthSlider);
         SetSerialized(player.GetComponent<PlayerHealth>(), "healthText", healthText);
 
@@ -250,6 +278,16 @@ public static class Team5ProjectBuilder
         CreateHidingSpot(new Vector3(-3.7f, 1f, -4f), new Vector3(1.4f, 2f, 2.2f));
         CreateHidingSpot(new Vector3(3.7f, 1f, 4f), new Vector3(1.4f, 2f, 2.2f));
         CreateHealthPickup(new Vector3(-2.5f, 1f, 11f));
+
+        GameObject managerObject = new GameObject("Level2StarManager");
+        Level1Manager manager = managerObject.AddComponent<Level1Manager>();
+        SetSerialized(manager, "requiredStars", 4);
+        SetSerialized(manager, "starCounterText", starText);
+
+        CreateStar(new Vector3(-2.7f, 1f, -8f), manager);
+        CreateStar(new Vector3(2.7f, 1f, -3f), manager);
+        CreateStar(new Vector3(-2.7f, 1f, 3f), manager);
+        CreateStar(new Vector3(2.7f, 1f, 9f), manager);
 
         GameObject enemyOne = CreateEnemy("Soot Sprite Enemy", new Vector3(0f, 1f, -1.5f));
         CreateLightCone(enemyOne, 8f, 35f);
@@ -284,6 +322,7 @@ public static class Team5ProjectBuilder
         GameObject managerObject = new GameObject("Level3Manager");
         Level3Manager manager = managerObject.AddComponent<Level3Manager>();
         SetSerialized(manager, "endingSceneName", "EndingCutscene");
+        SetSerialized(manager, "endingDelay", 4.5f);
 
         GameObject boss = CreateBoss(new Vector3(0f, 1.5f, 2.5f), player.transform, manager);
         SetSerialized(manager, "bossHealth", boss.GetComponent<BossHealth>());
@@ -552,6 +591,9 @@ public static class Team5ProjectBuilder
 
         CorridorEnemyAI enemyAI = enemy.AddComponent<CorridorEnemyAI>();
         SetSerialized(enemyAI, "useNavMeshAgentWhenAvailable", false);
+        SetSerialized(enemyAI, "autoAcquirePlayer", true);
+        SetSerialized(enemyAI, "chasePlayerInProximity", true);
+        SetSerialized(enemyAI, "proximityAggroRange", 2.75f);
 
         EnemyHealth health = enemy.AddComponent<EnemyHealth>();
         SetSerialized(health, "maxHealth", 75f);
@@ -671,6 +713,8 @@ public static class Team5ProjectBuilder
         BossHealth bossHealth = boss.AddComponent<BossHealth>();
         BossController bossController = boss.AddComponent<BossController>();
         SetSerialized(bossHealth, "level3Manager", manager);
+        SetSerialized(bossHealth, "disableOnDeath", false);
+        SetSerialized(bossHealth, "deathAnimationDelay", 4.5f);
         SetSerialized(bossController, "player", player);
 
         GameObject heart = GameObject.CreatePrimitive(PrimitiveType.Sphere);
@@ -682,6 +726,7 @@ public static class Team5ProjectBuilder
         BossWeakPoint weakPoint = heart.AddComponent<BossWeakPoint>();
         SetSerialized(weakPoint, "bossHealth", bossHealth);
         AddWorldHealthDisplay(boss.transform, null, bossHealth, new Vector3(0f, 3.6f, 0f), 1.8f);
+        BossAnimationSetup.AttachBossVisual(boss);
 
         return boss;
     }

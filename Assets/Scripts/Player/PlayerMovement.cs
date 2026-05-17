@@ -7,7 +7,7 @@ public class PlayerMovement : MonoBehaviour
     [SerializeField] private float walkSpeed = 5f;
     [SerializeField] private float runSpeed = 8f;
     [SerializeField] private float jumpForce = 6f;
-    [SerializeField] private float groundCheckDistance = 1.1f;
+    [SerializeField] private float groundCheckDistance = 0.15f;
     [SerializeField] private LayerMask groundLayers = ~0;
 
     [Header("Camera")]
@@ -15,12 +15,14 @@ public class PlayerMovement : MonoBehaviour
     [SerializeField] private float rotationSpeed = 12f;
 
     private Rigidbody rb;
+    private Collider playerCollider;
     private Vector3 moveInput;
     private bool wantsToJump;
 
     private void Awake()
     {
         rb = GetComponent<Rigidbody>();
+        playerCollider = GetComponent<Collider>();
         rb.useGravity = true;
         rb.freezeRotation = true;
     }
@@ -60,11 +62,11 @@ public class PlayerMovement : MonoBehaviour
             transform.rotation = Quaternion.Slerp(transform.rotation, targetRotation, rotationSpeed * Time.fixedDeltaTime);
         }
 
-        if (wantsToJump)
-{
-    rb.linearVelocity = new Vector3(rb.linearVelocity.x, 0f, rb.linearVelocity.z);
-    rb.AddForce(Vector3.up * jumpForce, ForceMode.Impulse);
-}   
+        if (wantsToJump && IsGrounded())
+        {
+            rb.linearVelocity = new Vector3(rb.linearVelocity.x, 0f, rb.linearVelocity.z);
+            rb.AddForce(Vector3.up * jumpForce, ForceMode.Impulse);
+        }
 
         wantsToJump = false;
     }
@@ -88,7 +90,13 @@ public class PlayerMovement : MonoBehaviour
 
     private bool IsGrounded()
     {
-        Vector3 origin = transform.position + Vector3.up * 0.05f;
-        return Physics.Raycast(origin, Vector3.down, groundCheckDistance + 0.05f, groundLayers, QueryTriggerInteraction.Ignore);
+        if (playerCollider == null)
+        {
+            return Physics.Raycast(transform.position, Vector3.down, groundCheckDistance, groundLayers, QueryTriggerInteraction.Ignore);
+        }
+
+        Bounds bounds = playerCollider.bounds;
+        float rayDistance = bounds.extents.y + groundCheckDistance;
+        return Physics.Raycast(bounds.center, Vector3.down, rayDistance, groundLayers, QueryTriggerInteraction.Ignore);
     }
 }

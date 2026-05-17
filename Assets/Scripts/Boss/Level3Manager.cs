@@ -5,7 +5,7 @@ public class Level3Manager : MonoBehaviour
 {
     [SerializeField] private BossHealth bossHealth;
     [SerializeField] private string endingSceneName = "EndingCutscene";
-    [SerializeField] private float endingDelay = 1f;
+    [SerializeField] private float endingDelay = 4.5f;
     [SerializeField] private GameObject[] lockedObjectsUntilBossDies;
 
     private bool bossDefeated;

@@ -22,8 +22,13 @@ public class CorridorEnemyAI : MonoBehaviour
     [SerializeField] private float driftRadius = 3f;
     [SerializeField] private float rotationSpeed = 5f;
     [SerializeField] private float arriveDistance = 0.6f;
+    [SerializeField] private bool keepGrounded = true;
 
     [Header("Detection")]
+    [SerializeField] private bool autoAcquirePlayer = true;
+    [SerializeField] private bool chasePlayerInProximity = true;
+    [SerializeField] private float proximityAggroRange = 2.5f;
+    [SerializeField] private float maxTargetHeightDifference = 2.5f;
     [SerializeField] private float detectionGraceTime = 2f;
     [SerializeField] private float searchTimeIfHidden = 3.5f;
     [SerializeField] private float toyAggroRange = 3f;
@@ -68,15 +73,27 @@ public class CorridorEnemyAI : MonoBehaviour
 
         if (rb != null)
         {
-            rb.useGravity = enemyType == EnemyType.AngryToy;
-            rb.freezeRotation = true;
+            rb.useGravity = true;
+            rb.constraints = RigidbodyConstraints.FreezeRotation;
+
+            if (keepGrounded)
+            {
+                rb.constraints |= RigidbodyConstraints.FreezePositionY;
+            }
         }
 
         if (agent != null)
         {
             agent.stoppingDistance = attackRange;
             agent.speed = driftSpeed;
+
+            if (!useNavMeshAgentWhenAvailable)
+            {
+                agent.enabled = false;
+            }
         }
+
+        AcquirePlayerIfNeeded();
     }
 
     private void Update()
@@ -88,13 +105,8 @@ public class CorridorEnemyAI : MonoBehaviour
             attackTimer -= Time.deltaTime;
         }
 
-        if (enemyType == EnemyType.AngryToy && player != null && !IsPlayerHidden())
-        {
-            if (Vector3.Distance(transform.position, player.position) <= toyAggroRange)
-            {
-                BeginChase(player);
-            }
-        }
+        AcquirePlayerIfNeeded();
+        TryProximityChase();
 
         switch (state)
         {
@@ -120,7 +132,7 @@ public class CorridorEnemyAI : MonoBehaviour
         CachePlayer(detectedPlayer);
         alertPoint = detectedPlayer.position;
 
-        if (IsPlayerHidden())
+        if (IsPlayerHidden() || !IsTargetAtTrackableHeight(player))
         {
             state = EnemyState.ReturnToShadow;
             return;
@@ -136,7 +148,7 @@ public class CorridorEnemyAI : MonoBehaviour
 
         CachePlayer(target);
 
-        if (IsPlayerHidden())
+        if (IsPlayerHidden() || !IsTargetAtTrackableHeight(player))
         {
             state = EnemyState.ReturnToShadow;
             return;
@@ -186,6 +198,11 @@ public class CorridorEnemyAI : MonoBehaviour
         Destroy(gameObject, 0.2f);
     }
 
+    private void OnCollisionStay(Collision collision)
+    {
+        TryContactAttack(collision.collider);
+    }
+
     private void DoDrift()
     {
         if (Vector3.Distance(transform.position, wanderTarget) <= arriveDistance)
@@ -204,7 +221,7 @@ public class CorridorEnemyAI : MonoBehaviour
             return;
         }
 
-        if (IsPlayerHidden())
+        if (IsPlayerHidden() || !IsTargetAtTrackableHeight(player))
         {
             state = EnemyState.ReturnToShadow;
             return;
@@ -242,7 +259,7 @@ public class CorridorEnemyAI : MonoBehaviour
             return;
         }
 
-        if (IsPlayerHidden())
+        if (IsPlayerHidden() || !IsTargetAtTrackableHeight(player))
         {
             state = EnemyState.ReturnToShadow;
             return;
@@ -258,19 +275,64 @@ public class CorridorEnemyAI : MonoBehaviour
         StopMoving();
         FaceDirection(player.position - transform.position);
 
-        if (attackTimer <= 0f)
-        {
-            attackTimer = attackCooldown;
-            AttackPlayer();
-        }
+        TryAttackIfReady();
     }
 
     private void CachePlayer(Transform target)
     {
-        player = target;
-        playerHealth = target.GetComponent<PlayerHealth>();
-        playerHiding = target.GetComponent<PlayerHiding>();
-        playerVisibility = target.GetComponent<PlayerVisibility>();
+        PlayerHealth health = target.GetComponentInParent<PlayerHealth>();
+        Transform playerTransform = health != null ? health.transform : target;
+
+        player = playerTransform;
+        playerHealth = health != null ? health : playerTransform.GetComponent<PlayerHealth>();
+        playerHiding = playerTransform.GetComponent<PlayerHiding>();
+        playerVisibility = playerTransform.GetComponent<PlayerVisibility>();
+    }
+
+    private void AcquirePlayerIfNeeded()
+    {
+        if (!autoAcquirePlayer || player != null) return;
+
+        GameObject playerObject = GameObject.FindGameObjectWithTag("Player");
+        if (playerObject != null)
+        {
+            CachePlayer(playerObject.transform);
+        }
+    }
+
+    private void TryProximityChase()
+    {
+        if (player == null || IsPlayerHidden() || !IsTargetAtTrackableHeight(player)) return;
+        if (state == EnemyState.Chase || state == EnemyState.ReturnToShadow) return;
+
+        float aggroRange = enemyType == EnemyType.AngryToy ? toyAggroRange : proximityAggroRange;
+        if (enemyType != EnemyType.AngryToy && !chasePlayerInProximity) return;
+
+        if (Vector3.Distance(transform.position, player.position) <= aggroRange)
+        {
+            BeginChase(player);
+        }
+    }
+
+    private void TryContactAttack(Collider other)
+    {
+        if (state == EnemyState.Dead || other == null) return;
+        if (!other.CompareTag("Player")) return;
+
+        CachePlayer(other.transform);
+        if (IsPlayerHidden()) return;
+
+        if (state != EnemyState.Chase)
+        {
+            BeginChase(player);
+        }
+
+        if (player == null) return;
+        if (Vector3.Distance(transform.position, player.position) > attackRange + 0.35f) return;
+
+        StopMoving();
+        FaceDirection(player.position - transform.position);
+        TryAttackIfReady();
     }
 
     private bool IsPlayerHidden()
@@ -278,6 +340,21 @@ public class CorridorEnemyAI : MonoBehaviour
         if (playerHiding != null) return playerHiding.isHiding;
         if (playerVisibility != null) return playerVisibility.IsHidden;
         return false;
+    }
+
+    private bool IsTargetAtTrackableHeight(Transform target)
+    {
+        if (target == null) return false;
+
+        return Mathf.Abs(target.position.y - transform.position.y) <= maxTargetHeightDifference;
+    }
+
+    private void TryAttackIfReady()
+    {
+        if (attackTimer > 0f) return;
+
+        attackTimer = attackCooldown;
+        AttackPlayer();
     }
 
     private void AttackPlayer()
@@ -290,12 +367,21 @@ public class CorridorEnemyAI : MonoBehaviour
         if (playerHealth != null)
         {
             playerHealth.TakeDamage(attackDamage);
-
-            if (attackKnockback > 0f)
-            {
-                playerHealth.TakeDamage(0, transform.position, attackKnockback);
-            }
+            ApplyKnockbackToPlayer();
         }
+    }
+
+    private void ApplyKnockbackToPlayer()
+    {
+        if (playerHealth == null || attackKnockback <= 0f) return;
+
+        Rigidbody playerRigidbody = playerHealth.GetComponent<Rigidbody>();
+        if (playerRigidbody == null) return;
+
+        Vector3 pushDirection = (playerHealth.transform.position - transform.position).normalized;
+        pushDirection.y = 0.5f;
+        pushDirection.Normalize();
+        playerRigidbody.AddForce(pushDirection * attackKnockback, ForceMode.Impulse);
     }
 
     private void MoveTo(Vector3 targetPosition, float speed)
@@ -320,7 +406,8 @@ public class CorridorEnemyAI : MonoBehaviour
         }
 
         direction.Normalize();
-        rb.linearVelocity = new Vector3(direction.x * speed, rb.linearVelocity.y, direction.z * speed);
+        float verticalVelocity = keepGrounded ? 0f : rb.linearVelocity.y;
+        rb.linearVelocity = new Vector3(direction.x * speed, verticalVelocity, direction.z * speed);
         FaceDirection(direction);
     }
 
@@ -333,7 +420,8 @@ public class CorridorEnemyAI : MonoBehaviour
 
         if (rb != null)
         {
-            rb.linearVelocity = new Vector3(0f, rb.linearVelocity.y, 0f);
+            float verticalVelocity = keepGrounded ? 0f : rb.linearVelocity.y;
+            rb.linearVelocity = new Vector3(0f, verticalVelocity, 0f);
         }
     }
 

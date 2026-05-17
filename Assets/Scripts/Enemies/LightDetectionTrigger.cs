@@ -9,6 +9,7 @@ public class LightDetectionTrigger : MonoBehaviour
     [SerializeField] private float detectionDelay = 0f;
     [SerializeField] private float broadcastRadius = 12f;
     [SerializeField] private float continuousAlertInterval = 1.5f;
+    [SerializeField] private float maxVerticalDetectionDifference = 2f;
 
     [Header("Light Feedback")]
     [SerializeField] private Light spotLight;
@@ -17,10 +18,27 @@ public class LightDetectionTrigger : MonoBehaviour
     [SerializeField] private float flashFadeSpeed = 4f;
 
     private Transform detectedPlayer;
+    private Collider detectedPlayerCollider;
     private PlayerHiding detectedPlayerHiding;
     private float detectionTimer;
     private float alertTimer;
     private float currentIntensity;
+
+    private void Awake()
+    {
+        Collider triggerCollider = GetComponent<Collider>();
+        triggerCollider.isTrigger = true;
+
+        if (associatedEnemy == null)
+        {
+            associatedEnemy = GetComponentInParent<CorridorEnemyAI>();
+        }
+
+        if (spotLight == null)
+        {
+            spotLight = GetComponentInChildren<Light>();
+        }
+    }
 
     private void Reset()
     {
@@ -45,6 +63,12 @@ public class LightDetectionTrigger : MonoBehaviour
 
         if (detectedPlayer == null) return;
 
+        if (!IsInsideDetectionBeam(detectedPlayerCollider))
+        {
+            ClearDetection();
+            return;
+        }
+
         if (IsPlayerHidden())
         {
             detectionTimer = detectionDelay;
@@ -64,9 +88,36 @@ public class LightDetectionTrigger : MonoBehaviour
     private void OnTriggerEnter(Collider other)
     {
         if (!IsPlayer(other)) return;
+        if (!IsInsideDetectionBeam(other)) return;
 
+        StartDetection(other);
+    }
+
+    private void OnTriggerStay(Collider other)
+    {
+        if (detectedPlayer != null || !IsPlayer(other)) return;
+        if (!IsInsideDetectionBeam(other)) return;
+
+        StartDetection(other);
+    }
+
+    private void OnTriggerExit(Collider other)
+    {
+        if (!IsPlayer(other)) return;
+
+        ClearDetection();
+    }
+
+    private bool IsPlayer(Collider other)
+    {
+        return other.CompareTag(playerTag);
+    }
+
+    private void StartDetection(Collider other)
+    {
         detectedPlayer = other.transform;
-        detectedPlayerHiding = other.GetComponent<PlayerHiding>();
+        detectedPlayerCollider = other;
+        detectedPlayerHiding = other.GetComponentInParent<PlayerHiding>();
         detectionTimer = detectionDelay;
         alertTimer = 0f;
 
@@ -78,18 +129,29 @@ public class LightDetectionTrigger : MonoBehaviour
         }
     }
 
-    private void OnTriggerExit(Collider other)
+    private void ClearDetection()
     {
-        if (!IsPlayer(other)) return;
-
         detectedPlayer = null;
+        detectedPlayerCollider = null;
         detectedPlayerHiding = null;
         detectionTimer = detectionDelay;
     }
 
-    private bool IsPlayer(Collider other)
+    private bool IsInsideDetectionBeam(Collider playerCollider)
     {
-        return other.tag == playerTag;
+        if (playerCollider == null) return false;
+
+        Vector3 localPoint = transform.InverseTransformPoint(playerCollider.bounds.center);
+        if (localPoint.z < 0f) return false;
+
+        float beamRange = spotLight != null ? spotLight.range : 8f;
+        if (localPoint.z > beamRange) return false;
+
+        if (Mathf.Abs(localPoint.y) > maxVerticalDetectionDifference) return false;
+
+        float angle = spotLight != null ? spotLight.spotAngle : 35f;
+        float radiusAtPoint = Mathf.Tan(angle * Mathf.Deg2Rad * 0.5f) * localPoint.z;
+        return Mathf.Abs(localPoint.x) <= radiusAtPoint && Mathf.Abs(localPoint.y) <= radiusAtPoint;
     }
 
     private bool IsPlayerHidden()

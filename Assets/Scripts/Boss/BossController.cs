@@ -6,6 +6,9 @@ public class BossController : MonoBehaviour
     [Header("Target")]
     [SerializeField] private Transform player;
 
+    [Header("Animation")]
+    [SerializeField] private Animator animator;
+
     [Header("Movement")]
     [SerializeField] private bool moveTowardPlayer = true;
     [SerializeField] private float moveSpeed = 1.5f;
@@ -22,16 +25,29 @@ public class BossController : MonoBehaviour
     private BossHealth bossHealth;
     private PlayerHealth playerHealth;
     private float attackTimer;
+    private bool hasIsWalkingParameter;
+    private bool hasAttackParameter;
+    private bool hasDeathParameter;
+    private bool deathStarted;
+
+    private static readonly int IsWalkingHash = Animator.StringToHash("isWalking");
+    private static readonly int AttackHash = Animator.StringToHash("Attack");
+    private static readonly int DeathHash = Animator.StringToHash("Death");
+    private static readonly int DeathStateHash = Animator.StringToHash("Base Layer.Death");
 
     private void Awake()
     {
         agent = GetComponent<NavMeshAgent>();
         rb = GetComponent<Rigidbody>();
         bossHealth = GetComponent<BossHealth>();
+
+        ResolveAnimator();
     }
 
     private void Start()
     {
+        ResolveAnimator();
+
         if (player == null)
         {
             GameObject playerObject = GameObject.FindGameObjectWithTag("Player");
@@ -55,8 +71,22 @@ public class BossController : MonoBehaviour
 
     private void Update()
     {
-        if (bossHealth != null && bossHealth.IsDead) return;
-        if (player == null) return;
+        if (bossHealth != null && bossHealth.IsDead)
+        {
+            StopMoving();
+            if (!deathStarted)
+            {
+                SetWalking(false);
+            }
+
+            return;
+        }
+
+        if (player == null)
+        {
+            SetWalking(false);
+            return;
+        }
 
         if (attackTimer > 0f)
         {
@@ -67,10 +97,12 @@ public class BossController : MonoBehaviour
         if (moveTowardPlayer && distance > stoppingDistance)
         {
             MoveTowardPlayer();
+            SetWalking(true);
         }
         else
         {
             StopMoving();
+            SetWalking(false);
         }
 
         FacePlayer();
@@ -125,6 +157,13 @@ public class BossController : MonoBehaviour
 
     private void AttackPlayer()
     {
+        if (deathStarted || (bossHealth != null && bossHealth.IsDead)) return;
+
+        if (animator != null)
+        {
+            PlayTriggeredAnimation(AttackHash, "Attack", hasAttackParameter);
+        }
+
         if (playerHealth == null && player != null)
         {
             playerHealth = player.GetComponent<PlayerHealth>();
@@ -133,6 +172,108 @@ public class BossController : MonoBehaviour
         if (playerHealth != null)
         {
             playerHealth.TakeDamage(attackDamage);
+        }
+    }
+
+    public void PlayDeathAnimation()
+    {
+        deathStarted = true;
+        StopMoving();
+        ResolveAnimator();
+
+        if (animator != null)
+        {
+            if (hasAttackParameter)
+            {
+                animator.ResetTrigger(AttackHash);
+            }
+
+            if (hasDeathParameter)
+            {
+                animator.ResetTrigger(DeathHash);
+            }
+
+            if (hasIsWalkingParameter)
+            {
+                animator.SetBool(IsWalkingHash, false);
+            }
+
+            if (animator.runtimeAnimatorController != null && animator.HasState(0, DeathStateHash))
+            {
+                animator.Play(DeathStateHash, 0, 0f);
+                animator.Update(0f);
+            }
+            else
+            {
+                PlayTriggeredAnimation(DeathHash, "Death", hasDeathParameter);
+            }
+        }
+    }
+
+    private void ResolveAnimator()
+    {
+        if (animator == null)
+        {
+            animator = GetComponentInChildren<Animator>();
+        }
+
+        if (animator == null) return;
+
+        animator.applyRootMotion = false;
+        hasIsWalkingParameter = HasAnimatorParameter(IsWalkingHash);
+        hasAttackParameter = HasAnimatorParameter(AttackHash);
+        hasDeathParameter = HasAnimatorParameter(DeathHash);
+    }
+
+    private bool HasAnimatorParameter(int parameterHash)
+    {
+        if (animator == null || animator.runtimeAnimatorController == null) return false;
+
+        foreach (AnimatorControllerParameter parameter in animator.parameters)
+        {
+            if (parameter.nameHash == parameterHash)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private void PlayTriggeredAnimation(int parameterHash, string stateName, bool hasParameter)
+    {
+        if (animator.runtimeAnimatorController == null) return;
+
+        if (hasParameter)
+        {
+            animator.SetTrigger(parameterHash);
+            return;
+        }
+
+        int stateHash = Animator.StringToHash("Base Layer." + stateName);
+        if (animator.HasState(0, stateHash))
+        {
+            animator.CrossFadeInFixedTime(stateHash, 0.05f);
+        }
+    }
+
+    private void SetWalking(bool isWalking)
+    {
+        if (deathStarted) return;
+        if (animator == null) return;
+        if (animator.runtimeAnimatorController == null) return;
+
+        if (hasIsWalkingParameter)
+        {
+            animator.SetBool(IsWalkingHash, isWalking);
+            return;
+        }
+
+        string stateName = isWalking ? "Walk" : "Idle";
+        int stateHash = Animator.StringToHash("Base Layer." + stateName);
+        if (animator.HasState(0, stateHash))
+        {
+            animator.CrossFadeInFixedTime(stateHash, 0.1f);
         }
     }
 }
